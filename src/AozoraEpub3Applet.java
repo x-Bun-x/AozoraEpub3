@@ -2397,10 +2397,15 @@ public class AozoraEpub3Applet extends JApplet
 					else if (urlString != null && urlString.toLowerCase().startsWith("http")) {
 						//ブラウザからのDnDならファイルの方は削除
 						vecUrlString = new Vector<String>();
-						vecUrlString.add(urlString);
-						dstPath = null;
+						try {
+							String[] urlStrings = urlString.split("\n");
+							for (String urlEntry : urlStrings) {
+								vecUrlString.add(urlEntry);
+								dstPath = null;
+							}
+						} catch (Exception e) { e.printStackTrace(); }
+						urlString = null;
 					}
-					
 					//URL変換 の最後が .zip
 					if (urlString != null && urlString.toLowerCase().endsWith(".zip")) {
 						convertZip(urlString);
@@ -3216,6 +3221,13 @@ public class AozoraEpub3Applet extends JApplet
 							else LogAppender.println(" は変換できませんでした");
 							return null;
 						}
+						if (webConverter != null && !webConverter.isUpdated()) {
+							LogAppender.append(urlString);
+							LogAppender.println(" は無更新なので変換をキャンセルしました");
+							return null;
+						}
+
+
 						//エンコードを変換時のみUTF-8にする
 						int encIndex = jComboEncType.getSelectedIndex();
 						jComboEncType.setSelectedIndex(1);

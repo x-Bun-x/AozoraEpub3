@@ -67,6 +67,7 @@ public class WebAozoraConverter
 	
 	////////////////////////////////
 	boolean canceled = false;
+	boolean updated = false;
 	
 	////////////////////////////////////////////////////////////////
 	/** fqdnに対応したインスタンスを生成してキャッシュして変換実行 */
@@ -164,12 +165,21 @@ public class WebAozoraConverter
 	{
 		return this.canceled;
 	}
+	public void updated()
+	{
+		this.updated = true;
+	}
+	public boolean isUpdated()
+	{
+		return this.updated;
+	}
 	
 	////////////////////////////////////////////////////////////////
 	/** 変換実行 */
 	public File convertToAozoraText(String urlString, File cachePath, int interval) throws IOException
 	{
 		this.canceled = false;
+		this.updated = false;
 		
 		this.interval = Math.max(500, interval);
 		
@@ -293,9 +303,11 @@ public class WebAozoraConverter
 			
 			Elements hrefs = getExtractElements(doc, this.queryMap.get(ExtractId.HREF));
 			if (hrefs == null && this.queryMap.containsKey(ExtractId.HREF)) {
+				// 短編はこれが出る
 				LogAppender.println("HREF : 各話のリンク先URLが取得できません");
 			}
 			
+			// これは本文側にない場合のみ参照するものでnarouだと未定義
 			Vector<String> subtitles = getExtractStrings(doc, this.queryMap.get(ExtractId.SUBTITLE_LIST), true);
 			if (subtitles == null && this.queryMap.containsKey(ExtractId.SUBTITLE_LIST)) {
 				LogAppender.println("SUBTITLE_LIST : 各話タイトルが取得できません");
@@ -338,6 +350,9 @@ public class WebAozoraConverter
 					if (contentDivs != null) {
 						//一覧のリンクはないが本文がある場合
 						docToAozoraText(bw, doc, false, null, null);
+						// なろう短編はここでcontent取り出しになるので疑似的にupdated扱い
+						// (更新(改稿)かどうか判断できない&そもそもキャッシュしていない)
+						this.updated = true;
 					} else {
 						LogAppender.println("一覧のURLが取得できませんでした");
 						return null;
@@ -377,8 +392,9 @@ public class WebAozoraConverter
 			
 			if (chapterHrefs.size() > 0) {
 				//全話で更新や追加があるかチェック
-				boolean updated = false;
-				
+				//boolean updated = false;
+				this.updated = false;
+
 				int i = 0;
 				for (String chapterHref : chapterHrefs) {
 					if (this.canceled) return null;
@@ -407,7 +423,8 @@ public class WebAozoraConverter
 								cacheFile(chapterHref, chapterCacheFile, urlString);
 								LogAppender.println(" : Loaded.");
 								//ファイルがロードされたら更新有り
-								updated = true;
+								//updated = true;
+								this.updated = true;
 							} catch (Exception e) {
 								e.printStackTrace();
 								LogAppender.println("htmlファイルが取得できませんでした : "+chapterHref);
@@ -454,7 +471,8 @@ public class WebAozoraConverter
 				bw.append(dateFormat.format(new Date()));
 				bw.append('\n');
 				
-				if (!updated) {
+				//if (!updated) {
+				if (!this.updated) {
 					LogAppender.append(title);
 					LogAppender.println(" の更新はありません");
 				}
