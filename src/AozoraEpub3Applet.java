@@ -82,6 +82,15 @@ import javax.swing.event.ChangeListener;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.plaf.FontUIResource;
 
+
+import javax.swing.TransferHandler;
+//import javax.swing.TransferHandler.TransferSupport;
+import javax.swing.text.TextAction;
+import javax.swing.text.JTextComponent;
+import javax.swing.InputMap;
+import javax.swing.KeyStroke;
+import java.awt.Toolkit;
+
 import org.apache.commons.compress.utils.IOUtils;
 
 import com.github.hmdev.converter.AozoraEpub3Converter;
@@ -1834,7 +1843,19 @@ public class AozoraEpub3Applet extends JApplet
 		jTextArea.setEditable(false);
 		jTextArea.setFont(new Font("Default", Font.PLAIN, 12));
 		jTextArea.setBorder(new LineBorder(Color.white, 3));
-		new DropTarget(jTextArea, DnDConstants.ACTION_COPY_OR_MOVE, new DropListener(), true);
+
+		jTextArea.setTransferHandler(new TextAreaTransferHandler("text"));
+		//new DropTarget(jTextArea, DnDConstants.ACTION_COPY_OR_MOVE, new DropListener(), true);
+		// JTextComponentのpaste()はeditable&enabledでないと
+		// TransferHandlerのActionを呼び出さないので自前でActionを作り直す
+		// create paste-url action
+		jTextArea.getActionMap().put("paste-url", new PasteUrlAction());
+		// create new inputmap locally
+		InputMap jtxInputMap = new InputMap();
+		jtxInputMap.setParent(jTextArea.getInputMap());
+		jtxInputMap.put(KeyStroke.getKeyStroke("ctrl V"), "paste-url");
+		jTextArea.setInputMap(JComponent.WHEN_FOCUSED, jtxInputMap);
+
 		
 		lowerPane.add(new JScrollPane(jTextArea));
 		
@@ -2321,111 +2342,174 @@ public class AozoraEpub3Applet extends JApplet
 			}
 		}
 	}
+
+	class PasteUrlAction extends TextAction /* AbstractAction */ {
+		PasteUrlAction() { super("paste-url"); }
+		@Override
+		public void actionPerformed(ActionEvent e) {
+			//LogAppender.println("paste url action");
+			JTextComponent target = getTextComponent(e);
+			if (target != null) {
+				//LogAppender.println("paste url from clipboard");
+				// このあたりはthのpasteaction経由でもいいのだが、
+				// systemclipboardを確実に取れるかどうかわからないので
+				// 確実に取れるように実装しておく
+				Clipboard cb = Toolkit.getDefaultToolkit().getSystemClipboard();
+				TransferHandler th = target.getTransferHandler();
+				th.importData(new TransferHandler.TransferSupport(target, cb.getContents(null)));
+			}
+		}
+	}
+
 	/** ドラッグ＆ドロップイベント
 	 * 複数ファイルに対応 */
-	class DropListener implements DropTargetListener
+	class TextAreaTransferHandler extends TransferHandler
 	{
+		//@Override
+		protected TextAreaTransferHandler() { super(); }
+		//@Override
+		TextAreaTransferHandler(String property) { super(property); }
+		// dropのみ
 		@Override
-		public void dragEnter(DropTargetDragEvent dtde) {}
+		public boolean canImport(TransferSupport support) {
+			if (isRunning()) return false;
+
+			DataFlavor[] dfs = support.getDataFlavors();
+			for (DataFlavor df : dfs) {
+				if (DataFlavor.stringFlavor.equals(df)) {
+					return true;
+				} else if (DataFlavor.javaFileListFlavor.equals(df)) {
+					int action = support.getDropAction();
+					return (action == COPY || action == MOVE);
+				}
+			}
+			return false;
+		}
 		@Override
-		public void dragOver(DropTargetDragEvent dtde) {}
-		@Override
-		public void dropActionChanged(DropTargetDragEvent dtde) {}
-		@Override
-		public void dragExit(DropTargetEvent dte) {}
-		@Override
-		public void drop(DropTargetDropEvent dtde)
-		{
-			if (isRunning()) return;
+		public boolean importData(TransferSupport support) {
+			if (support.isDrop()) {
+				// ドロップ処理
+				//LogAppender.println("ドロップ");
+				int action = support.getDropAction();
+				if (action == COPY || action == MOVE) {
+					Transferable transfer = support.getTransferable();
+					return handle_drop_or_paste(transfer);
+				}
+			} else {
+				// ペースト処理
+				LogAppender.println("ペースト");
+				Transferable transfer = support.getTransferable();
+				return handle_drop_or_paste(transfer);
+			}
+			return false;
+		}
+		// dropのみ
+		//@Override
+		//protected void exportDone(JComponent source, Transferable data, int action) {}
+	}
+	////////////////
+	// とりあえず常にtrueを返す実装
+	boolean handle_drop_or_paste(Transferable transfer)
+	{
+		if (isRunning()) return false;
+
+		try {
+			Vector<File> vecFiles = new Vector<File>();
+			Vector<String> vecUrlString = null;
+			File dstPath = null;
 			
-			dtde.acceptDrop(DnDConstants.ACTION_COPY_OR_MOVE);
-			Transferable transfer = dtde.getTransferable();
-			try {
-				Vector<File> vecFiles = new Vector<File>();
-				Vector<String> vecUrlString = null;
-				File dstPath = null;
+			if (transfer.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
+				//LogAppender.println("FileList形式");
+				//IEはurlはショートカットとURL文字列の両方がくる
+				@SuppressWarnings("unchecked")
+				List<File> files = (List<File>)transfer.getTransferData(DataFlavor.javaFileListFlavor);
+				if (files.size() > 0) {
+					for (File file : files) {
+						if (file.getName().toLowerCase().endsWith(".url")) {
+							if (vecUrlString == null) vecUrlString = new Vector<String>();
+							vecUrlString.add(readInternetShortCut(file));
+							dstPath = file.getParentFile();
+						} else {
+							vecFiles.add(file);
+						}
+					}
+					if (vecFiles.size() > 0) {
+						startConvertFilesWorker(vecFiles);
+					}
+				}
+			}
+			if (vecUrlString != null || transfer.isDataFlavorSupported(DataFlavor.stringFlavor)) {
+				//LogAppender.println("String形式");
+				//URLかどうか
+				String urlString = null;
+				try {
+					Object transferData = transfer.getTransferData(DataFlavor.stringFlavor);
+					if (transferData != null) urlString = transferData.toString();
+				} catch (Exception e) {}
 				
-				if (transfer.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
-					//IEはurlはショートカットとURL文字列の両方がくる
-					@SuppressWarnings("unchecked")
-					List<File> files = (List<File>)transfer.getTransferData(DataFlavor.javaFileListFlavor);
-					if (files.size() > 0) {
-						for (File file : files) {
-							if (file.getName().toLowerCase().endsWith(".url")) {
-								if (vecUrlString == null) vecUrlString = new Vector<String>();
-								vecUrlString.add(readInternetShortCut(file));
-								dstPath = file.getParentFile();
-							} else {
-								vecFiles.add(file);
+				if (urlString != null && urlString.startsWith("file://")) {
+					//Linux等 ファイルのパスでファイルがあれば変換
+					try {
+						String[] fileNames = urlString.split("\n");
+						vecFiles = new Vector<File>();
+						for (String path : fileNames) {
+							File file = new File(URLDecoder.decode(path.substring(7).trim(),"UTF-8"));
+							if (file.exists()) {
+								if (file.getName().toLowerCase().endsWith(".url")) {
+									if (vecUrlString == null) vecUrlString = new Vector<String>();
+									vecUrlString.add(readInternetShortCut(file));
+									dstPath = file.getParentFile();
+								} else {
+									vecFiles.add(file);
+								}
 							}
 						}
 						if (vecFiles.size() > 0) {
 							startConvertFilesWorker(vecFiles);
 						}
-					}
+					} catch (Exception e) { e.printStackTrace(); }
 				}
-				if (vecUrlString != null || transfer.isDataFlavorSupported(DataFlavor.stringFlavor)) {
-					//URLかどうか
-					String urlString = null;
+				else if (urlString != null && urlString.toLowerCase().contains("http://")) {
+					//ブラウザからのDnDならファイルの方は削除
+					vecUrlString = new Vector<String>();
+					dstPath = null;
 					try {
-						Object transferData = transfer.getTransferData(DataFlavor.stringFlavor);
-						if (transferData != null) urlString = transferData.toString();
-					} catch (Exception e) {}
-					
-					if (urlString != null && urlString.startsWith("file://")) {
-						//Linux等 ファイルのパスでファイルがあれば変換
-						try {
-							String[] fileNames = urlString.split("\n");
-							vecFiles = new Vector<File>();
-							for (String path : fileNames) {
-								File file = new File(URLDecoder.decode(path.substring(7).trim(),"UTF-8"));
-								if (file.exists()) {
-									if (file.getName().toLowerCase().endsWith(".url")) {
-										if (vecUrlString == null) vecUrlString = new Vector<String>();
-										vecUrlString.add(readInternetShortCut(file));
-										dstPath = file.getParentFile();
-									} else {
-										vecFiles.add(file);
-									}
+						String[] urlLines = urlString.split("\n");
+						for (String urlLine : urlLines) {
+							int start_idx = urlLine.indexOf("http://");
+							if (start_idx != -1) {
+								int end_idx = urlLine.indexOf(" ", start_idx);
+								if (end_idx == -1) {
+									end_idx = urlLine.length();
 								}
-							}
-							if (vecFiles.size() > 0) {
-								startConvertFilesWorker(vecFiles);
-							}
-						} catch (Exception e) { e.printStackTrace(); }
-					}
-					else if (urlString != null && urlString.toLowerCase().startsWith("http")) {
-						//ブラウザからのDnDならファイルの方は削除
-						vecUrlString = new Vector<String>();
-						try {
-							String[] urlStrings = urlString.split("\n");
-							for (String urlEntry : urlStrings) {
+								String urlEntry = urlLine.substring(start_idx, end_idx);
+								//LogAppender.println(urlEntry);
 								vecUrlString.add(urlEntry);
-								dstPath = null;
 							}
-						} catch (Exception e) { e.printStackTrace(); }
-						urlString = null;
-					}
-					//URL変換 の最後が .zip
-					if (urlString != null && urlString.toLowerCase().endsWith(".zip")) {
-						convertZip(urlString);
-						return;
-					}
-					
-					//Webから取得
-					if (vecUrlString != null) {
-						convertWeb(vecUrlString, dstPath);
-						return;
-					}
+						}
+					} catch (Exception e) { e.printStackTrace(); }
+					urlString = null;
 				}
-			} catch (Exception e) {
-				e.printStackTrace();
-			} finally {
-				jTextArea.setCaretPosition(jTextArea.getDocument().getLength());
+				//URL変換 の最後が .zip
+				if (urlString != null && urlString.toLowerCase().endsWith(".zip")) {
+					convertZip(urlString);
+					return true;
+				}
+				
+				//Webから取得
+				if (vecUrlString != null) {
+					convertWeb(vecUrlString, dstPath);
+					return true;
+				}
 			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		} finally {
+			jTextArea.setCaretPosition(jTextArea.getDocument().getLength());
 		}
+		return true;
 	}
-	
+
 	void convertZip(String urlString) throws IOException
 	{
 		//出力先が指定されていない
@@ -3223,8 +3307,8 @@ public class AozoraEpub3Applet extends JApplet
 						}
 						if (webConverter != null && !webConverter.isUpdated()) {
 							LogAppender.append(urlString);
-							LogAppender.println(" は無更新なので変換をキャンセルしました");
-							return null;
+							LogAppender.println(" は無更新なので変換をスキップします");
+							continue;
 						}
 
 
