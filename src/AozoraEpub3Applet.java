@@ -293,6 +293,7 @@ public class AozoraEpub3Applet extends JApplet
 	JComboBox jComboChapterPattern;
 	
 	JTextField jTextWebInterval;
+	JCheckBox jCheckWebNoModifiedSkip;
 	
 	//テキストエリア
 	//JScrollPane jScrollPane;
@@ -426,7 +427,7 @@ public class AozoraEpub3Applet extends JApplet
 		ImageIcon imageIcon = new ImageIcon(AozoraEpub3Applet.class.getResource("images/image.png"));
 		ImageIcon pageSettingIcon = new ImageIcon(AozoraEpub3Applet.class.getResource("images/page_setting.png"));
 		ImageIcon tocIcon = new ImageIcon(AozoraEpub3Applet.class.getResource("images/toc.png"));
-		//ImageIcon webIcon = new ImageIcon(AozoraEpub3Applet.class.getResource("images/web.png"));
+		ImageIcon webIcon = new ImageIcon(AozoraEpub3Applet.class.getResource("images/web.png"));
 		
 		ButtonGroup buttonGroup;
 		
@@ -1803,7 +1804,7 @@ public class AozoraEpub3Applet extends JApplet
 		tabPanel = new JPanel();
 		//tabPanel.setLayout(new BoxLayout(tabPanel, BoxLayout.Y_AXIS));
 		tabPanel.setLayout(new FlowLayout(FlowLayout.LEFT, 1, 0));
-		//jTabbedPane.addTab("Web", webIcon, tabPanel);
+		jTabbedPane.addTab("Web", webIcon, tabPanel);
 		
 		////////////////////////////////
 		panel = new JPanel();
@@ -1826,7 +1827,17 @@ public class AozoraEpub3Applet extends JApplet
 		panel.add(jTextWebInterval);
 		label = new JLabel("秒");
 		panel.add(label);
+
+		panel = new JPanel();
+		panel.setLayout(new BoxLayout(panel, BoxLayout.X_AXIS));
+		panel.setBorder(new NarrowTitledBorder("更新確認設定"));
+		tabPanel.add(panel);
 		
+		jCheckWebNoModifiedSkip = new JCheckBox("未更新時スキップ", true);
+		jCheckWebNoModifiedSkip.setToolTipText("タイトル未更新時にスキップします");
+		jCheckWebNoModifiedSkip.setFocusPainted(false);
+		jCheckWebNoModifiedSkip.setBorder(padding2);
+		panel.add(jCheckWebNoModifiedSkip);
 		
 		////////////////////////////////////////////////////////////////
 		//テキストエリア
@@ -3305,7 +3316,8 @@ public class AozoraEpub3Applet extends JApplet
 							else LogAppender.println(" は変換できませんでした");
 							return null;
 						}
-						if (webConverter != null && !webConverter.isUpdated()) {
+
+						if (jCheckWebNoModifiedSkip.isSelected() && webConverter != null && !webConverter.isUpdated()) {
 							LogAppender.append(urlString);
 							LogAppender.println(" は無更新なので変換をスキップします");
 							continue;
@@ -3685,6 +3697,8 @@ public class AozoraEpub3Applet extends JApplet
 		////////////////////////////////////////////////////////////////
 		//Web
 		setIntText(jTextWebInterval, props, "WebInterval");
+		setPropsSelected(jCheckWebNoModifiedSkip, props, "WebNoModifiedSkip");
+
 	}
 	
 	/** アプレットの設定状態をpropsに保存 */
@@ -3814,6 +3828,8 @@ public class AozoraEpub3Applet extends JApplet
 		props.setProperty("ChapterPatternText", this.jComboChapterPattern.getEditor().getItem().toString().trim());
 		//Web
 		props.setProperty("WebInterval", this.jTextWebInterval.getText());
+		props.setProperty("WebNoModifiedSkip", this.jCheckWebNoModifiedSkip.isSelected()?"1":"");
+
 		
 		//確認ダイアログの元画像を残す
 		props.setProperty("ReplaceCover", this.jConfirmDialog.jCheckReplaceCover.isSelected()?"1":"");
