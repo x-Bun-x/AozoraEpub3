@@ -70,6 +70,11 @@ public class WebAozoraConverter
 	boolean updated = false;
 	
 	////////////////////////////////////////////////////////////////
+	static String application_version = null;
+	public static void setApplicationVersion(String version) {
+		application_version = version;
+	}
+	////////////////////////////////////////////////////////////////
 	/** fqdnに対応したインスタンスを生成してキャッシュして変換実行 */
 	public static WebAozoraConverter createWebAozoraConverter(String urlString, File configPath) throws IOException
 	{
@@ -350,6 +355,7 @@ public class WebAozoraConverter
 					if (contentDivs != null) {
 						//一覧のリンクはないが本文がある場合
 						docToAozoraText(bw, doc, false, null, null);
+						printSourceInfo(bw, urlString);
 						// なろう短編はここでcontent取り出しになるので疑似的にupdated扱い
 						// (更新(改稿)かどうか判断できない&そもそもキャッシュしていない)
 						this.updated = true;
@@ -458,18 +464,7 @@ public class WebAozoraConverter
 					}
 					i++;
 				}
-				//底本にURL追加
-				bw.append("\n［＃改ページ］\n");
-				bw.append("底本： ");
-				bw.append("<a href=\"");
-				bw.append(urlString);
-				bw.append("\">");
-				bw.append(urlString);
-				bw.append("</a>");
-				bw.append('\n');
-				bw.append("変換日時： ");
-				bw.append(dateFormat.format(new Date()));
-				bw.append('\n');
+				printSourceInfo(bw, urlString);
 				
 				//if (!updated) {
 				if (!this.updated) {
@@ -484,6 +479,27 @@ public class WebAozoraConverter
 		
 		this.canceled = false;
 		return txtFile;
+	}
+
+	//底本にURL追加
+	private void printSourceInfo(BufferedWriter bw, String urlString) throws IOException
+	{
+		bw.append("\n［＃改ページ］\n");
+		bw.append("底本： ");
+		bw.append("<a href=\"");
+		bw.append(urlString);
+		bw.append("\">");
+		bw.append(urlString);
+		bw.append("</a>");
+		bw.append('\n');
+		bw.append("変換日時： ");
+		bw.append(dateFormat.format(new Date()));
+		bw.append('\n');
+		if (application_version != null) {
+			bw.append("変換バージョン： ");
+			bw.append(application_version);
+			bw.append('\n');
+		}
 	}
 	
 	/** 更新情報の生成と保存 */
