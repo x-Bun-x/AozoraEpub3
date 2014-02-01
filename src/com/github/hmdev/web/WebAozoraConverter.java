@@ -686,6 +686,25 @@ public class WebAozoraConverter
 		this.noHr = noHr;
 		_printNode(bw, parent);
 	}
+	private static boolean isHLine (String text, int min_length) {
+		if (text.length() == 0) {
+			return false;
+		}
+		char[] chars = text.toCharArray();
+		// 区切り線に変換する記号
+		switch (chars[0]) {
+		case '-': break;
+		case '=': break;
+		default: return false;
+		}
+		char symbol = chars[0];
+		for (char ch : chars) {
+			if (ch != symbol) {
+				return false;
+			}
+		}
+		return (text.length() > min_length);
+	}
 	/** ノードを出力 再帰用 */
 	private void _printNode(BufferedWriter bw, Node parent) throws IOException
 	{
@@ -701,10 +720,32 @@ public class WebAozoraConverter
 			if (endElement != null && node.equals(endElement)) {
 				return;
 			}
-			if (node instanceof TextNode) printText(bw, ((TextNode)node).getWholeText());
-			else if (node instanceof Element) {
+			if (node instanceof TextNode) {
+				// 取り出した文字列は行頭に"\n"を含んだりしている
+				// hoge<br />改行
+				// fuge<br />
+				// だとDOMとしては
+				// text("hoge")
+				// tag("br")
+				// text("\nfuge")
+				// tag("br")
+				// となり、行頭に改行が来る
+				// printText()側がこの改行コード等をtrim filterしているので
+				// print側は問題ないが、文字列解析としては問題あり
+				String textline = ((TextNode)node).getWholeText();
+				textline = textline.replaceAll("^[\r\n]+", "");
+				//LogAppender.println("テキスト : \""+textline+"\"");
+				// 最低連続数10は要調整
+				if (isHLine(textline, 10) && !this.noHr) {
+					//LogAppender.println("区切り線に変換");
+					bw.append("［＃区切り線］\n");
+				} else {
+					printText(bw, textline);
+				}
+			} else if (node instanceof Element) {
 				Element elem = (Element)node;
 				if ("br".equals(elem.tagName())) {
+					//LogAppender.println("BR : "+((elem.nextSibling() != null) ? "改行出力":"改行なし"));
 					if (elem.nextSibling() != null) bw.append('\n');
 				} else if ("div".equals(elem.tagName())) {
 					if (elem.previousSibling() != null && !isBlockNode(elem.previousSibling())) bw.append('\n');
