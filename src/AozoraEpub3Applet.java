@@ -3317,7 +3317,8 @@ public class AozoraEpub3Applet extends JApplet
 							if (webConverter != null && webConverter.isCanceled())
 								LogAppender.println(" の変換をキャンセルしました");
 							else LogAppender.println(" は変換できませんでした");
-							return null;
+							continue;
+							//return null;
 						}
 
 						if (jCheckWebNoModifiedSkip.isSelected() && webConverter != null && !webConverter.isUpdated()) {
@@ -3653,7 +3654,7 @@ public class AozoraEpub3Applet extends JApplet
 		setPropsSelected(jCheckCommentPrint, props, "CommentPrint");
 		setPropsSelected(jCheckCommentConvert, props, "CommentConvert");
 		//空行除去
-		try { jComboxRemoveEmptyLine.setSelectedItem(Integer.parseInt(props.getProperty("RemoveEmptyLine"))); } catch (Exception e) {}
+		try { jComboxRemoveEmptyLine.setSelectedIndex(Integer.parseInt(props.getProperty("RemoveEmptyLine"))); } catch (Exception e) {}
 		propValue = props.getProperty("MaxEmptyLine");
 		try { jComboxMaxEmptyLine.setSelectedIndex(Integer.parseInt(propValue)); } catch (Exception e) {}
 		//行頭字下げ追加
